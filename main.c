@@ -18,6 +18,8 @@ enum tsymbol {tnull = -1,
 
 struct tokenType {
     int number;		// token number
+    char paren;
+    char* string;
 
     union {
         char id[ID_LENGTH];
@@ -103,15 +105,14 @@ int getIntNum(char firstCharacter, FILE* source_file)
   return num;
 }
 
-struct tokenType scanner(FILE* source_file)
-{
+struct tokenType scanner(FILE* source_file) {
   struct tokenType token;
   int i, index;
   char ch, id[ID_LENGTH];
   token.number = tnull;
 
   do {
-    while (isspace(ch = fgetc(source_file))); // state 1: 공백은 뛰어 넘기자.
+    while (isspace(ch = fgetc(source_file))); // 공백은 뛰어 넘기자.
 
     if (superLetter(ch)) { // 식별자나 키워드가 있다면,
       i=0;
@@ -131,7 +132,10 @@ struct tokenType scanner(FILE* source_file)
         if (!strcmp(id, keyword[index])) break;
 
       if (index < NO_KEYWORDS)	// fount, keyword exit
+      {
         token.number = tnum[index];
+        token.string = keyword[index];
+      }
       else {			// not found, identifier exit
         token.number = tident;  // state 0
         strcpy(token.value.id, id);
@@ -145,16 +149,19 @@ struct tokenType scanner(FILE* source_file)
         case '/' :					// state 8
           ch = fgetc(source_file);
           token.number = tdiv;
+          token.paren = '/';
           ungetc(ch, source_file); // retract
           break;
         case '*' :					// state 4
           ch = fgetc(source_file);
           token.number = tmul;
+          token.paren = '*';
           ungetc(ch, source_file);	// retract
           break;
         case '+' :					// state 5
           ch = fgetc(source_file);
           token.number = tplus;
+          token.paren = '+';
           ungetc(ch, source_file);	// retract
           break;
         case '-' :					// stats 7
@@ -163,6 +170,7 @@ struct tokenType scanner(FILE* source_file)
             while (fgetc(source_file) != '\n');
           else {
             token.number = tminus;
+            token.paren = '-';
             ungetc(ch, source_file);	// retract
           }
           break;
@@ -170,14 +178,30 @@ struct tokenType scanner(FILE* source_file)
           ch = fgetc(source_file);
           if (ch == '=') {
             token.number = tassign;
+            token.string = ":=";
+          } else {
             ungetc(ch, source_file);	// retract
           }
           break;
-        case '(' : token.number = tlparen;		break;  // state 2
-        case ')' : token.number = trparen;		break;  // state 3
-        case ',' : token.number = tcomma;		  break;  // state 6
-        case ';' : token.number = tsemicolon;	break;  // state 9
-        case EOF : token.number = teof;			  break;  // state 11
+        case '(' :
+          token.number = tlparen;
+          token.paren = '(';
+          break;  // state 2
+        case ')' :
+          token.number = trparen;
+          token.paren = ')';
+          break;  // state 3
+        case ',' :
+          token.number = tcomma;
+          token.paren = ',';
+          break;  // state 6
+        case ';' :
+          token.number = tsemicolon;
+          token.paren = ';';
+          break;  // state 9
+        case EOF :
+          token.number = teof;
+          break;  // state 11
         default : {
           printf("Current character : %c", ch);
           lexicalError(4);
@@ -207,15 +231,28 @@ int main(int argc, char *argv[])
   do {
     token = scanner(source_file);
     fprintf(stdout, "Token ---> ");
-    if(token.number == 1)
-      fprintf(stdout, ": (%d, %d)\n", token.number, token.value.num);
-    else if(token.number == 0)
-      fprintf(stdout, ": (%d, %s)\n", token.number, token.value.id);
-    else {
-      fprintf(stdout, ": (%d, 0)\n", token.number);
+
+    switch (token.number) {
+      case 0 :
+        fprintf(stdout, ": (%d, '%s')\n", token.number, token.value.id);
+        break;
+      case 1 :
+        fprintf(stdout, ": (%d, %d)\n", token.number, token.value.num);
+        break;
+      case 2: case 3: case 4: case 5: case 6: case 7: case 8: case 9:
+        fprintf(stdout, ": (%d, '%c')\n", token.number, token.paren);
+        break;
+      case 10:
+        fprintf(stdout, ": (%d, '%s')\n", token.number, token.string);
+        break;
+      case 11:
+        fprintf(stdout, ": (%d, 'exit')\n", token.number);
+        break;
+      case 12: case 13: case 14: case 15: case 16:
+        fprintf(stdout, ": (%d, '%s')\n", token.number, token.string);
+        break;
     }
   } while (!feof(source_file));
 
   fclose(source_file);
-
 }
