@@ -1,0 +1,7 @@
+package TestProgram is
+begin
+  a1 := 0;
+  b1 := 34;
+  c1 := ( a1 + b1 ) * 25;
+  write ( a1, b1 / 2, c1 * 100 );
+end;

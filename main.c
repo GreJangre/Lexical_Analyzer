@@ -1,0 +1,226 @@
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#include <ctype.h>
+
+#define NO_KEYWORDS 5
+#define ID_LENGTH 12
+
+enum tsymbol {
+    tnull = -1, tident, tnumber,
+
+    tlparen, trparen,	tmul, tplus,
+
+    tcomma,	tminus,	tcomment,
+
+    tdiv,	tsemicolon, tassign,
+
+    teof,
+
+    //	......	 word symbols ..................................... //
+            tpakage, tis, tbegin, tend, twrite
+};
+
+struct tokenType {
+    int number;		// token number
+
+    union {
+        char id[ID_LENGTH];
+        int num;
+    } value;		// token value
+};
+
+char *keyword[NO_KEYWORDS] = {
+        "pakage", "is", "begin", "end", "write"
+};
+
+enum tsymbol tnum[NO_KEYWORDS] = {
+        tpakage, tis, tbegin, tend, twrite
+};
+
+void lexicalError(int n)
+{
+  printf(" *** Lexical Error : ");
+
+  switch (n)	{
+    case 1 : printf("an identifier length must be less than 12.\n");
+      break;
+    case 2 : printf("next character must be &.\n");
+      break;
+    case 3 : printf("next character must be |.\n");
+      break;
+    case 4 : printf("invalid character!!!\n");
+      break;
+    default:
+      break;
+  }
+}
+
+int superLetter(char ch)
+{
+  if(isalpha(ch) || ch == '_') return 1;
+  else return 0;
+}
+int superLetterOrDigit(char ch)
+{
+  if (isalnum(ch) || ch == '_') return 1;
+  else return 0;
+}
+int hexValue(char ch)
+{
+  switch (ch) {
+    case '0' : case '1' : case '2' : case '3' : case '4' :
+    case '5' : case '6' : case '7' : case '8' : case '9' :
+      return (ch - '0');
+    case 'A' : case 'B' : case 'C' : case 'D' : case 'E' : case 'F' :
+      return (ch - 'A' + 10);
+    case 'a' : case 'b' : case 'c' : case 'd' : case 'e' : case 'f' :
+      return (ch - 'a' + 10);
+    default : return -1;
+  }
+}
+
+int getIntNum(char firstCharacter, FILE* source_file)
+{
+  int num = 0;
+  int value;
+  char ch;
+  if (firstCharacter != '0') {			// decimal
+    ch = firstCharacter;
+    do {
+      num = 10*num + (int)(ch - '0');
+      ch = fgetc(source_file);
+    } while (isdigit(ch));
+  } else {
+    ch = fgetc(source_file);
+    if ((ch >= '0') && (ch <= '7'))		// octal
+      do {
+        num = 8*num + (int)(ch - '0');
+        ch = fgetc(source_file);
+      } while ((ch >= '0') && (ch <= '7'));
+    else if ((ch == 'X') || (ch == 'x')) {	// hexa decimal
+      while ((value = hexValue(ch=fgetc(source_file))) != -1)
+        num = 16 * num + value;
+    }
+    else num = 0;			// zero
+  }
+  ungetc(ch, source_file);	// retract
+  return num;
+}
+
+struct tokenType scanner(FILE* source_file)
+{
+  struct tokenType token;
+  int i, index;
+  char ch, id[ID_LENGTH];
+  token.number = tnull;
+
+  do {
+    while (isspace(ch = fgetc(source_file))); // state 1: 공백은 뛰어 넘기자.
+
+    if (superLetter(ch)) { // 식별자나 키워드가 있다면,
+      i=0;
+
+      do {
+        if (i<ID_LENGTH) id[i++] = ch;
+        ch = fgetc(source_file);
+      } while (superLetterOrDigit(ch));
+
+      if (i>=ID_LENGTH) lexicalError(1);
+
+      id[i] = '\0';
+      ungetc(ch, source_file); // retract
+
+      // find the identifier in the keyword table
+      for (index=0; index < NO_KEYWORDS; index++) {
+        if (!strcmp(id, keyword[index])) break;
+      }
+
+      if (index < NO_KEYWORDS)	// fount, keyword exit
+        token.number = tnum[index];
+      else {			// not found, identifier exit
+        token.number = tident;
+        strcpy(token.value.id, id);
+      }
+    } // end of identifier or keyword
+    else if (isdigit(ch)) {			// integer constant
+      token.number = tnumber;
+      token.value.num = getIntNum(ch, source_file);
+    }
+    else switch (ch) {				// special character
+        case '/' :					// state 10
+          ch = fgetc(source_file);
+          token.number = tdiv;
+          ungetc(ch, source_file); // retract
+          break;
+        case '*' :					// state 25
+          ch = fgetc(source_file);
+          token.number = tmul;
+          ungetc(ch, source_file);	// retract
+          break;
+        case '+' :					// state 28
+          ch = fgetc(source_file);
+          token.number = tplus;
+          ungetc(ch, source_file);	// retract
+          break;
+        case '-' :					// stats 32
+          ch = fgetc(source_file);
+          if (ch == '-')
+            while (fgetc(source_file) != '\n');
+          else {
+            token.number = tminus;
+            ungetc(ch, source_file);	// retract
+          }
+          break;
+        case ':' :					// state 39
+          ch = fgetc(source_file);
+          if (ch == '=') {
+            token.number = tassign;
+            ungetc(ch, source_file);	// retract
+          }
+          break;
+        case '(' : token.number = tlparen;		break;
+        case ')' : token.number = trparen;		break;
+        case ',' : token.number = tcomma;		break;
+        case ';' : token.number = tsemicolon;	break;
+        case EOF : token.number = teof;			break;
+        default : {
+          printf("Current character : %c", ch);
+          lexicalError(4);
+          break;
+        }
+      } // switch end
+  } while (token.number == tnull);
+
+  return token;
+} // end of scanner
+
+int main(int argc, char *argv[])
+{
+  FILE *source_file;
+  struct tokenType token;
+
+  if (argc < 2) {
+    fprintf(stderr, "Usage : scanner <source file name>\n");
+    exit(1);
+  }
+
+  if((source_file = fopen(argv[1], "r")) == NULL) {
+    fprintf(stderr, "%s file not found \n", argv[1]);
+    exit(-1);
+  }
+
+  do {
+    token = scanner(source_file);
+    fprintf(stdout, "Token ---> ");
+    if(token.number == 5)
+      fprintf(stdout, ": (%d, %d)\n", token.number, token.value.num);
+    else if(token.number == 4)
+      fprintf(stdout, ": (%d, %s)\n", token.number, token.value.id);
+    else
+      fprintf(stdout, ": (%d, 0)\n",  token.number);
+  } while (!feof(source_file));
+
+  fclose(source_file);
+
+}
